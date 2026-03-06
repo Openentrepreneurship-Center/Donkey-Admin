@@ -243,6 +243,43 @@ export async function getErrors(
   return res.json();
 }
 
+export interface HealthStatus {
+  ok: boolean;
+  status?: string;
+  message?: string;
+}
+
+/** 백엔드 API 서버 헬스체크 (인증 불필요) */
+export async function getHealthCheck(): Promise<HealthStatus> {
+  try {
+    const res = await fetch(`${API_BASE}/health`, {
+      headers: getHeaders(false),
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: "error",
+        message: `HTTP ${res.status}`,
+      };
+    }
+    const body = (await res.json().catch(() => ({}))) as {
+      status?: string;
+      [key: string]: unknown;
+    };
+    const status = body?.status ?? "ok";
+    return {
+      ok: true,
+      status: status as string,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      status: "error",
+      message: e instanceof Error ? e.message : "연결 실패",
+    };
+  }
+}
+
 export async function getDashboard(): Promise<DashboardStats> {
   const res = await fetch(`${API_BASE}/admin/api/dashboard`, {
     headers: getHeaders(),

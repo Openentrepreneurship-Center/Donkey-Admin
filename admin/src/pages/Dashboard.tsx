@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import {
   getDashboard,
   getErrors,
+  getHealthCheck,
   type DashboardStats,
   type ErrorItem,
+  type HealthStatus,
   type RatePeriod,
 } from "../api";
 
@@ -32,6 +34,19 @@ export function Dashboard() {
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [errorItems, setErrorItems] = useState<ErrorItem[] | null>(null);
   const [errorModalLoading, setErrorModalLoading] = useState(false);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [healthRefreshing, setHealthRefreshing] = useState(false);
+
+  const refreshHealth = () => {
+    setHealthRefreshing(true);
+    setHealth(null);
+    getHealthCheck()
+      .then((h) => setHealth(h))
+      .catch(() =>
+        setHealth({ ok: false, status: "error", message: "연결 실패" })
+      )
+      .finally(() => setHealthRefreshing(false));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -50,13 +65,89 @@ export function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const runCheck = () =>
+      getHealthCheck()
+        .then((h) => {
+          if (!cancelled) setHealth(h);
+        })
+        .catch(() => {
+          if (!cancelled)
+            setHealth({ ok: false, status: "error", message: "연결 실패" });
+        });
+    runCheck();
+    const interval = setInterval(runCheck, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const ServerStatusBadge = () => (
+    <div
+      className={`inline-flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium text-sm shadow-sm border ${
+        health?.ok
+          ? "bg-emerald-50 border-emerald-200/80 text-emerald-800"
+          : health
+          ? "bg-red-50 border-red-200/80 text-red-800"
+          : "bg-slate-100 border-slate-200/80 text-slate-600"
+      }`}
+    >
+      <span className="relative flex h-3 w-3 shrink-0">
+        {health?.ok && (
+          <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+        )}
+        <span
+          className={`relative inline-flex h-3 w-3 rounded-full ring-2 ${
+            health?.ok
+              ? "bg-emerald-600 ring-emerald-200"
+              : health
+              ? "bg-red-500 ring-red-200"
+              : "bg-slate-400 animate-pulse ring-slate-200"
+          }`}
+        />
+      </span>
+      API 서버:{" "}
+      <span className="font-semibold">
+        {health === null && !healthRefreshing
+          ? "확인 중..."
+          : healthRefreshing
+          ? "확인 중..."
+          : health?.ok
+          ? "정상"
+          : health?.message ?? "연결 실패"}
+      </span>
+      <button
+        type="button"
+        onClick={refreshHealth}
+        disabled={healthRefreshing}
+        className="ml-1 p-0.5 -mr-0.5 rounded hover:bg-black/10 disabled:opacity-50 transition-colors"
+        title="다시 확인"
+      >
+        <span
+          className={`inline-block text-2xl leading-none ${
+            healthRefreshing ? "animate-spin" : ""
+          }`}
+        >
+          ⟳
+        </span>
+      </button>
+    </div>
+  );
+
   if (loading) {
     return (
       <div>
-        <h2 className="admin-page-title mb-2">대시보드</h2>
-        <p className="text-sm text-slate-500 mb-6">
-          API 사용 현황을 한눈에 확인하세요.
-        </p>
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 className="admin-page-title mb-2">대시보드</h2>
+            <p className="text-sm text-slate-500">
+              API 사용 현황을 한눈에 확인하세요.
+            </p>
+          </div>
+          <ServerStatusBadge />
+        </div>
         <div className="admin-card p-8 text-slate-500">불러오는 중...</div>
       </div>
     );
@@ -65,10 +156,15 @@ export function Dashboard() {
   if (error || !stats) {
     return (
       <div>
-        <h2 className="admin-page-title mb-2">대시보드</h2>
-        <p className="text-sm text-slate-500 mb-6">
-          API 사용 현황을 한눈에 확인하세요.
-        </p>
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 className="admin-page-title mb-2">대시보드</h2>
+            <p className="text-sm text-slate-500">
+              API 사용 현황을 한눈에 확인하세요.
+            </p>
+          </div>
+          <ServerStatusBadge />
+        </div>
         <div className="admin-card p-8 text-red-600">
           {error ?? "데이터 없음"}
         </div>
@@ -98,6 +194,67 @@ export function Dashboard() {
 
       {/* 요약 카드 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div
+          className={`admin-card overflow-hidden flex flex-col items-center justify-center relative min-h-[100px] border-l-4 ${
+            health?.ok
+              ? "border-l-emerald-500 bg-gradient-to-br from-emerald-50/50 to-white"
+              : health
+              ? "border-l-red-500 bg-gradient-to-br from-red-50/50 to-white"
+              : "border-l-slate-300 bg-slate-50/50"
+          }`}
+        >
+          <div className="flex flex-col items-center text-center">
+            <span className="relative flex h-4 w-4 mb-2">
+              {health?.ok && (
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+              )}
+              <span
+                className={`relative inline-flex h-4 w-4 rounded-full ${
+                  health?.ok
+                    ? "bg-emerald-500 ring-4 ring-emerald-200/60"
+                    : health
+                    ? "bg-red-500 ring-4 ring-red-200/60"
+                    : "bg-slate-400 animate-pulse"
+                }`}
+              />
+            </span>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-0.5">
+              API 서버 상태
+            </p>
+            <p
+              className={`text-xl font-bold tracking-tight ${
+                health?.ok
+                  ? "text-emerald-700"
+                  : health
+                  ? "text-red-700"
+                  : "text-slate-600"
+              }`}
+            >
+              {health === null && !healthRefreshing
+                ? "확인 중..."
+                : healthRefreshing
+                ? "확인 중..."
+                : health?.ok
+                ? "정상"
+                : health?.message || "연결 실패"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={refreshHealth}
+            disabled={healthRefreshing}
+            className="absolute top-3 right-3 p-1 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50"
+            title="다시 확인"
+          >
+            <span
+              className={`inline-block text-2xl leading-none ${
+                healthRefreshing ? "animate-spin" : ""
+              }`}
+            >
+              ⟳
+            </span>
+          </button>
+        </div>
         <div className="admin-card p-5">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-slate-500">
@@ -225,56 +382,6 @@ export function Dashboard() {
             )}
           </p>
         </div>
-        <div
-          className="admin-card p-5"
-          title="요약 문장 중 전사 원문에서 의미적 근거를 찾을 수 없는 문장의 비율"
-        >
-          <p className="text-sm font-medium text-slate-500">HR (최근 30일)</p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            원문 근거 없는 문장 비율 (낮을수록 좋음)
-          </p>
-          <p className="text-2xl font-semibold text-slate-900 mt-1">
-            {stats.summary_eval?.eval_count
-              ? ((stats.summary_eval.avg_hr ?? 0) * 100).toFixed(1)
-              : "-"}
-            <span className="text-sm font-medium text-slate-400 ml-1">%</span>
-          </p>
-          {stats.summary_eval?.eval_count && (
-            <p className="text-xs text-slate-400 mt-0.5">
-              {stats.summary_eval.eval_count}건 평가
-            </p>
-          )}
-        </div>
-        <div
-          className="admin-card p-5"
-          title="요약 문장 중 전사 원문의 핵심 의미를 충실히 유지한 문장의 비율"
-        >
-          <p className="text-sm font-medium text-slate-500">SSR (최근 30일)</p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            원문 의미 유지한 문장 비율
-          </p>
-          <p className="text-2xl font-semibold text-slate-900 mt-1">
-            {stats.summary_eval?.eval_count
-              ? ((stats.summary_eval.avg_ssr ?? 0) * 100).toFixed(1)
-              : "-"}
-            <span className="text-sm font-medium text-slate-400 ml-1">%</span>
-          </p>
-        </div>
-        <div
-          className="admin-card p-5"
-          title="요약이 전사 원문 대비 얼마나 정보량을 압축했는지를 나타내는 비율"
-        >
-          <p className="text-sm font-medium text-slate-500">ICR (최근 30일)</p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            전사 대비 정보 압축 정도
-          </p>
-          <p className="text-2xl font-semibold text-slate-900 mt-1">
-            {stats.summary_eval?.avg_icr != null
-              ? ((stats.summary_eval.avg_icr ?? 0) * 100).toFixed(1)
-              : "-"}
-            <span className="text-sm font-medium text-slate-400 ml-1">%</span>
-          </p>
-        </div>
       </div>
 
       {/* 오류 목록 모달 */}
@@ -360,7 +467,7 @@ export function Dashboard() {
           <h3 className="font-medium text-slate-800 mb-3">
             최근 7일 요청 추이
           </h3>
-          <div className="flex items-end gap-2 h-24">
+          <div className="flex items-end gap-2 h-36 min-h-[140px]">
             {(stats.daily_counts ?? []).map((d) => {
               const daily = stats.daily_counts ?? [];
               const max = Math.max(...daily.map((x) => x.count), 1);
